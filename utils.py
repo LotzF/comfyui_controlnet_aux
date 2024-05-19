@@ -10,6 +10,7 @@ import subprocess
 import threading
 import comfy
 import tempfile
+import folder_paths
 
 here = Path(__file__).parent.resolve()
 
@@ -43,7 +44,12 @@ if os.path.exists(config_path):
             log.error("Failed to create config ckpts directory. Using default.")
             annotator_ckpts_path = str(Path(here, "./ckpts"))
 else:
-    annotator_ckpts_path = str(Path(here, "./ckpts"))
+    if "annotator_ckpts" in folder_paths.folder_names_and_paths:
+        annotator_ckpts_path = folder_paths.get_folder_paths("annotator_ckpts")[0]
+        if not os.path.exists(annotator_ckpts_path):
+            os.makedirs(annotator_ckpts_path)
+    else:
+        annotator_ckpts_path = str(Path(here, "./ckpts"))
     TEMP_DIR = tempfile.gettempdir()
     USE_SYMLINKS = False
     ORT_PROVIDERS = ["CUDAExecutionProvider", "DirectMLExecutionProvider", "OpenVINOExecutionProvider", "ROCMExecutionProvider", "CPUExecutionProvider", "CoreMLExecutionProvider"]
