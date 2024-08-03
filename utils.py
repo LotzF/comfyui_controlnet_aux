@@ -54,18 +54,20 @@ else:
     USE_SYMLINKS = False
     ORT_PROVIDERS = ["CUDAExecutionProvider", "DirectMLExecutionProvider", "OpenVINOExecutionProvider", "ROCMExecutionProvider", "CPUExecutionProvider", "CoreMLExecutionProvider"]
 
-os.environ['AUX_ANNOTATOR_CKPTS_PATH'] = annotator_ckpts_path
-os.environ['AUX_TEMP_DIR'] = str(TEMP_DIR)
-os.environ['AUX_USE_SYMLINKS'] = str(USE_SYMLINKS)
-os.environ['AUX_ORT_PROVIDERS'] = str(",".join(ORT_PROVIDERS))
+os.environ['AUX_ANNOTATOR_CKPTS_PATH'] = os.getenv('AUX_ANNOTATOR_CKPTS_PATH', annotator_ckpts_path)
+os.environ['AUX_TEMP_DIR'] = os.getenv('AUX_TEMP_DIR', str(TEMP_DIR))
+os.environ['AUX_USE_SYMLINKS'] = os.getenv('AUX_USE_SYMLINKS', str(USE_SYMLINKS))
+os.environ['AUX_ORT_PROVIDERS'] = os.getenv('AUX_ORT_PROVIDERS', str(",".join(ORT_PROVIDERS)))
 
 log.info(f"Using ckpts path: {annotator_ckpts_path}")
 log.info(f"Using symlinks: {USE_SYMLINKS}")
 log.info(f"Using ort providers: {ORT_PROVIDERS}")
 
-MAX_RESOLUTION=2048 #Who the hell feed 4k images to ControlNet?
+# Sync with theoritical limit from Comfy base
+# https://github.com/comfyanonymous/ComfyUI/blob/eecd69b53a896343775bcb02a4f8349e7442ffd1/nodes.py#L45
+MAX_RESOLUTION=16384
 
-def common_annotator_call(model, tensor_image, input_batch=False, **kwargs):
+def common_annotator_call(model, tensor_image, input_batch=False, show_pbar=True, **kwargs):
     if "detect_resolution" in kwargs:
         del kwargs["detect_resolution"] #Prevent weird case?
 
@@ -81,7 +83,8 @@ def common_annotator_call(model, tensor_image, input_batch=False, **kwargs):
         return torch.from_numpy(np_results.astype(np.float32) / 255.0)
 
     batch_size = tensor_image.shape[0]
-    pbar = comfy.utils.ProgressBar(batch_size)
+    if show_pbar:
+        pbar = comfy.utils.ProgressBar(batch_size)
     out_tensor = None
     for i, image in enumerate(tensor_image):
         np_image = np.asarray(image.cpu() * 255., dtype=np.uint8)
@@ -90,7 +93,8 @@ def common_annotator_call(model, tensor_image, input_batch=False, **kwargs):
         if out_tensor is None:
             out_tensor = torch.zeros(batch_size, *out.shape, dtype=torch.float32)
         out_tensor[i] = out
-        pbar.update(1)
+        if show_pbar:
+            pbar.update(1)
     return out_tensor
 
 def create_node_input_types(**extra_kwargs):
@@ -214,3 +218,20 @@ def run_script(cmd, cwd='.'):
     stderr_thread.join()
 
     return process.wait()
+
+def nms(x, t, s):
+    x = cv2.GaussianBlur(x.astype(np.float32), (0, 0), s)
+
+    f1 = np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]], dtype=np.uint8)
+    f2 = np.array([[0, 1, 0], [0, 1, 0], [0, 1, 0]], dtype=np.uint8)
+    f3 = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.uint8)
+    f4 = np.array([[0, 0, 1], [0, 1, 0], [1, 0, 0]], dtype=np.uint8)
+
+    y = np.zeros_like(x)
+
+    for f in [f1, f2, f3, f4]:
+        np.putmask(y, cv2.dilate(x, kernel=f) == x, x)
+
+    z = np.zeros_like(y, dtype=np.uint8)
+    z[y > t] = 255
+    return z

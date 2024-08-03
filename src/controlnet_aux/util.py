@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from huggingface_hub import constants, hf_hub_download
 from torch.hub import get_dir, download_url_to_file
+from ast import literal_eval
 
 
 TORCHHUB_PATH = Path(__file__).parent / 'depth_anything' / 'torchhub'
@@ -22,6 +23,16 @@ SAM_MODEL_NAME = "dhkim2810/MobileSAM"
 UNIMATCH_MODEL_NAME = "hr16/Unimatch"
 DEPTH_ANYTHING_MODEL_NAME = "LiheYoung/Depth-Anything" #HF Space
 DIFFUSION_EDGE_MODEL_NAME = "hr16/Diffusion-Edge"
+METRIC3D_MODEL_NAME = "JUGGHM/Metric3D"
+
+DEPTH_ANYTHING_V2_MODEL_NAME_DICT = {
+    "depth_anything_v2_vits.pth": "depth-anything/Depth-Anything-V2-Small",
+    "depth_anything_v2_vitb.pth": "depth-anything/Depth-Anything-V2-Base",
+    "depth_anything_v2_vitl.pth": "depth-anything/Depth-Anything-V2-Large",
+    "depth_anything_v2_vitg.pth": "depth-anything/Depth-Anything-V2-Giant",
+    "depth_anything_v2_metric_vkitti_vitl.pth": "depth-anything/Depth-Anything-V2-Metric-VKITTI-Large",
+    "depth_anything_v2_metric_hypersim_vitl.pth": "depth-anything/Depth-Anything-V2-Metric-Hypersim-Large"
+}
 
 temp_dir = tempfile.gettempdir()
 annotator_ckpts_path = os.path.join(Path(__file__).parents[2], 'ckpts')
@@ -34,7 +45,7 @@ except:
     pass
 
 try:
-    USE_SYMLINKS = eval(os.environ['AUX_USE_SYMLINKS'])
+    USE_SYMLINKS = literal_eval(os.environ['AUX_USE_SYMLINKS'])
 except:
     warnings.warn("USE_SYMLINKS not set successfully. Using default value: False to download models.")
     pass
@@ -148,6 +159,8 @@ def resize_image_with_pad(input_image, resolution, upscale_method = "", skip_hwc
     else:
         img = HWC3(input_image)
     H_raw, W_raw, _ = img.shape
+    if resolution == 0:
+        return img, lambda x: x
     k = float(resolution) / float(min(H_raw, W_raw))
     H_target = int(np.round(float(H_raw) * k))
     W_target = int(np.round(float(W_raw) * k))
